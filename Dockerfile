@@ -5,7 +5,9 @@ FROM python:3.10-slim
 # Системные зависимости для чтения аудио (flac/ogg/mp3) и для soundfile/libsndfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libsndfile1 git ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+    build-essential cmake ninja-build pkg-config \
+    libeigen3-dev zlib1g-dev libbz2-dev liblzma-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt /app/
