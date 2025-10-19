@@ -8,47 +8,36 @@ from typing import Optional, Dict
 import requests
 import runpod
 
-# Переставим HF-кэш в сетевой том (на случай, если не задан в Endpoint ENV)
-os.environ.setdefault("HF_HOME", "/runpod-volume/hf_cache")
-os.environ.setdefault("HF_HUB_CACHE", "/runpod-volume/hf_cache/hub")
-os.environ.setdefault("HF_XET_CACHE", "/runpod-volume/hf_cache/xet")
-os.environ.setdefault("TRANSFORMERS_CACHE", "/runpod-volume/hf_cache/transformers")
-for p in (os.getenv("HF_HOME"), os.getenv("HF_HUB_CACHE"),
-          os.getenv("HF_XET_CACHE"), os.getenv("TRANSFORMERS_CACHE")):
-    if p:
-        os.makedirs(p, exist_ok=True)
-
-# --- T-one ---
+# T-one
 from tone import StreamingCTCPipeline, read_audio  # https://github.com/voicekit-team/T-one
-import torch
 
-logger = logging.getLogger("tone_runpod_gpu")
+logger = logging.getLogger("tone_runpod")
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO"))
 
 PIPELINE: Optional[StreamingCTCPipeline] = None
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def init_pipeline() -> StreamingCTCPipeline:
+    """Lazy, single init per worker. No decoder kwargs here."""
     global PIPELINE
     if PIPELINE is None:
-        logger.info("Loading T-one pipeline on device=%s ...", DEVICE)
+        logger.info("Loading T-one pipeline...")
         PIPELINE = StreamingCTCPipeline.from_hugging_face()
-        # Если у пайплайна есть внутренние torch-модули, они, как правило, сами переходят на CUDA.
-        # На всякий случай можно попытаться выставить device, если у объекта есть метод .to/device:
-        for attr in ("model", "acoustic_model"):
-            if hasattr(PIPELINE, attr):
-                mod = getattr(PIPELINE, attr)
-                try:
-                    mod.to(DEVICE)  # no-op на CPU
-                except Exception:
-                    pass
     return PIPELINE
 
 
 def _load_audio_from_source(src: str):
+    """
+    Accepts either:
+      - URL (http/https)
+      - base64 string prefixed with 'base64:' (optional convenience)
+
+    Returns audio array via T-one's read_audio.
+    """
     if not isinstance(src, str) or not src:
         raise ValueError("input.audio_file must be a non-empty string (URL or 'base64:<...>').")
+
+    # base64 shortcut, if ever needed
     if src.startswith("base64:"):
         b64 = src[len("base64:") :]
         audio_bytes = base64.b64decode(b64)
@@ -57,6 +46,7 @@ def _load_audio_from_source(src: str):
             temp_path = f.name
         return read_audio(temp_path)
 
+    # treat as URL
     resp = requests.get(src, timeout=180)
     resp.raise_for_status()
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
@@ -75,13 +65,15 @@ def _validate(job_input: Dict):
 
 def handler(job):
     """
-    Payload:
+    Standard (non-streaming) RunPod handler.
+    Expects payload:
     {
       "input": {
         "audio_file": "https://.../file.wav"  // or "base64:<...>"
       }
     }
-    Returns: { "text": "<full transcription>" }
+    Returns:
+    { "text": "<full transcription>" }
     """
     job_input = job.get("input") or {}
     err = _validate(job_input)
@@ -100,12 +92,22 @@ def handler(job):
 
     runpod.serverless.progress_update(job, "transcribing")
     try:
-        text = pipeline.forward_offline(audio)  # полный ответ, без стрима
+        # Full, one-shot recognition (no streaming)
+        response = pipeline.forward_offline(audio)
     except Exception as e:
         logger.exception("ASR failed.")
         return {"error": f"ASR failed: {e}"}
 
-    return {"text": text}
+    try:
+        res = ''
+        for t in response['text']:
+            res += t.text + '\n'
+    except Exception as e:
+        logger.exception("Preparing answer failed.")
+        return {"error": f"Preparing answer failed: {e}"}
+
+    return res
 
 
+# Required by RunPod
 runpod.serverless.start({"handler": handler})
