@@ -98,15 +98,14 @@ def handler(job):
         logger.exception("ASR failed.")
         return {"error": f"ASR failed: {e}"}
 
+
     try:
-        res = ''
-        for t in response['text']:
-            res += t.text + '\n'
+        return {
+            "segments": [{"end": t.end_time, "start": t.start_time, "text": t.text} for t in response['text']]
+        }
     except Exception as e:
         logger.exception("Preparing answer failed.")
         return {"error": f"Preparing answer failed: {e}"}
-
-    return res
 
 
 # Required by RunPod
