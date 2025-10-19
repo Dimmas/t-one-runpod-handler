@@ -18,9 +18,5 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY handler.py /app/
 
-# Параметры по умолчанию: не требуем KenLM; greedy-декодер
-ENV TONE_DECODER=greedy
-# ENV TONE_HF_REVISION=main   # опционально зафиксировать ревизию модели
-
 # Для локального теста "python handler.py" запустит встроенный dev-server SDK
 CMD ["python", "handler.py"]
