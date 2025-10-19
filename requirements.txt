@@ -1,0 +1,5 @@
+runpod
+requests
+
+# ставим T-one напрямую из GitHub
+git+https://github.com/voicekit-team/T-one.git#egg=tone
