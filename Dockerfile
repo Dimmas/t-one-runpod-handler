@@ -6,6 +6,8 @@ FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
 # Системные зависимости для аудио и https
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libsndfile1 git ca-certificates \
+    build-essential cmake pkg-config \
+    libeigen3-dev zlib1g-dev libbz2-dev liblzma-dev \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
