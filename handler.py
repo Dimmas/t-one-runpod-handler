@@ -1,5 +1,4 @@
 import os
-import json
 import tempfile
 import base64
 import logging
@@ -101,7 +100,7 @@ def handler(job):
 
     try:
         return {
-            "segments": [{"end": t.end_time, "start": t.start_time, "text": t.text} for t in response['text']]
+            "segments": [{"end": t.end_time, "start": t.start_time, "text": t.text} for t in response]
         }
     except Exception as e:
         logger.exception("Preparing answer failed.")
